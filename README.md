@@ -34,7 +34,7 @@ The project is implemented in **C++/OpenGL/CUDA**:
 ### Features So Far
 - **OBJ loading** with diffuse/specular texture sampling
 - **Bounding Volume Hierarchy** (using Surface Area Heuristic)
-- **BRDF**
+- **Physically Based BRDF**
 
 ### Performance Improvements
 - Stream compaction
@@ -45,10 +45,9 @@ The project is implemented in **C++/OpenGL/CUDA**:
 
 ## Future Work
 
-- [ ] Add more material types (glossy, dielectric, etc.)
-- [ ] Implement global illumination
-- [ ] Support for more scene formats
-- [ ] Further optimization and denoising
+- [ ] Disney BRDF
+- [ ] Support for more scene formats (USD)
+- [ ] Further optimization and denoising (Intel OpenImage Denoising)
 
 ---
 
@@ -73,5 +72,3 @@ Select your Visual Studio version, and x64 for your platform.
 - Physically Based Rendering: From Theory to Implementation 4th Edition
 
 ---
-
-*Built with ❤️ and CUDA*
