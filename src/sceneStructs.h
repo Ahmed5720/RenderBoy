@@ -19,6 +19,12 @@ struct BBox
     glm::vec3 min = { 1000, 1000, 1000 };
     glm::vec3 max = { -1000, -1000, -1000 };
 };
+struct BsdfParams
+{
+    glm::vec3 diffuseColor;
+    glm::vec3 F0;
+    float alpha;
+};
 struct Ray
 {
     glm::vec3 origin;
@@ -51,6 +57,8 @@ struct Material
 {
     glm::vec3 color = { 1,1,1 };
     float specular = 1.0;
+    float roughness = 0.5;
+    float metallic = 0.0f;
     cudaTextureObject_t diffuseMap = 0;
     cudaTextureObject_t specularMap = 0;
     float shininess = 0.0f;

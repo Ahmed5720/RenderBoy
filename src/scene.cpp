@@ -53,7 +53,7 @@ void Scene::loadObj(const std::string& filename, const glm::mat4& transform)
         if (!mesh.MeshMaterial.map_Ks.empty())  
             mat.specularTexPath = dir + mesh.MeshMaterial.map_Ks;
         else
-            mat.specular = mesh.MeshMaterial.Ns;
+            mat.roughness = mesh.MeshMaterial.Ns;
         materials.push_back(mat);
         
 

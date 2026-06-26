@@ -12,11 +12,11 @@ Although very powerful and beautiful, so far this renderer falls slightly short 
 ## Renders
 
 ### Fireplace Scene
-![Fire Place @ 2200 Samples, Depth = 4](img/fireplace.png)
+![Fire Place @ 2200 Samples, Depth = 4](img/fireplace2.png)
 *2200 samples, ray depth = 4*
 
 ### Stanford Dragon Scene
-![Stanford Dragon Scene @ 2200 Samples, Depth = 4](img/stanford2.png)
+![Stanford Dragon Scene @ 2200 Samples, Depth = 4](img/imp.png)
 *2200 samples, ray depth = 4*
 
 ### BVH Visualization
@@ -34,9 +34,7 @@ The project is implemented in **C++/OpenGL/CUDA**:
 ### Features So Far
 - **OBJ loading** with diffuse/specular texture sampling
 - **Bounding Volume Hierarchy** (using Surface Area Heuristic)
-- **Materials**:
-  - Diffuse materials
-  - Perfectly specular materials
+- **BRDF**
 
 ### Performance Improvements
 - Stream compaction

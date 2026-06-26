@@ -11,10 +11,11 @@
  * Computes a cosine-weighted random direction in a hemisphere.
  * Used for diffuse lighting.
  */
-__host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
-    glm::vec3 normal, 
-    thrust::default_random_engine& rng);
+__host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(glm::vec3 normal, thrust::default_random_engine& rng);
 
+__host__ __device__ BsdfParams makeParams(const Material& m);
+
+__host__ __device__ glm::vec3 bsdfEval(const BsdfParams& p, const glm::vec3& N, const glm::vec3& V, const glm::vec3& L);
 /**
  * Scatter a ray with some probabilities according to the material properties.
  * For example, a diffuse surface scatters in a cosine-weighted hemisphere.
@@ -40,9 +41,11 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__ void scatterRay(
-    PathSegment& pathSegment,
-    glm::vec3 intersect,
-    glm::vec3 normal,
-    const Material& m,
-    thrust::default_random_engine& rng);
+__host__ __device__ void scatterRay(PathSegment& pathSegment, glm::vec3 intersect, glm::vec3 normal, const BsdfParams& p, thrust::default_random_engine& rng);
+
+//__host__ __device__ void scatterRay(
+//    PathSegment& pathSegment,
+//    glm::vec3 intersect,
+//    glm::vec3 normal,
+//    const Material& m,
+//    thrust::default_random_engine& rng);

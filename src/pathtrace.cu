@@ -108,8 +108,8 @@ static BVH_node_gpu* dev_bvh = NULL;
 static int num_tris = 0;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
-static int* dev_emissive_geoms = NULL;
-static int num_emissive_geoms = 0;
+static int* dev_emissive_tris = NULL;
+static int num_emissive_tris = 0;
 int bvhNodeCount;
 
 int maxDepth = 20;
@@ -415,7 +415,6 @@ void buildBVH(const std::vector<Triangle>& tris, std::vector<Triangle>& orderedO
     bvh.push_back(std::move(root));
     if (!tris.empty()) buildSAH(0, 0, prims);
 
-    // ---- flatten step is UNCHANGED ----
     bvh_gpu.resize(bvh.size());
     for (size_t n = 0; n < bvh.size(); n++) {
         BVH_node_gpu ng;
@@ -485,24 +484,20 @@ void pathtraceInit(Scene* scene)
             num_tris * sizeof(Triangle), cudaMemcpyHostToDevice);
     }
 
-    std::vector<int> emissiveGeoms;
-    for (int i = 0; i < (int)scene->geoms.size(); i++)
+    std::vector<int> emissiveTris;
+    for (int i = 0; i < orderedTris.size(); i++)
+        if (scene->materials[orderedTris[i].materialid].emittance > 0.0f)
+            emissiveTris.push_back(i);
+    num_emissive_tris = emissiveTris.size();
+    if (num_emissive_tris > 0)
     {
-        if (scene->materials[scene->geoms[i].materialid].emittance > 0.0f)
-        {
-            emissiveGeoms.push_back(i);
-        }
-    }
-    num_emissive_geoms = (int)emissiveGeoms.size();
-    if (num_emissive_geoms > 0)
-    {
-        cudaMalloc(&dev_emissive_geoms, num_emissive_geoms * sizeof(int));
-        cudaMemcpy(dev_emissive_geoms, emissiveGeoms.data(),
-            num_emissive_geoms * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMalloc(&dev_emissive_tris, num_emissive_tris * sizeof(int));
+        cudaMemcpy(dev_emissive_tris, emissiveTris.data(),
+            num_emissive_tris * sizeof(int), cudaMemcpyHostToDevice);
     }
     else
     {
-        dev_emissive_geoms = NULL;
+        dev_emissive_tris = NULL;
     }
 
         checkCUDAError("pathtraceInit");
@@ -517,11 +512,11 @@ void pathtraceFree()
     cudaFree(dev_intersections);
     cudaFree(dev_tris);
     cudaFree(dev_bvh);
-    cudaFree(dev_emissive_geoms);
+    cudaFree(dev_emissive_tris);
     dev_tris = NULL;
     dev_bvh = NULL;
-    dev_emissive_geoms = NULL;
-    num_emissive_geoms = 0;
+    dev_emissive_tris = NULL;
+    num_emissive_tris = 0;
     num_tris = 0;
 
     checkCUDAError("pathtraceFree");
@@ -691,6 +686,53 @@ __device__ float sphereWorldSurfaceArea(const Geom& geom)
     return 4.0f * PI * r * r;
 }
 
+// Helper function to sample a random point on a triangle
+__device__ glm::vec3 samplePointOnTri(const Triangle& tri, glm::vec3& normal, thrust::default_random_engine& rng) {
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    float u = u01(rng);
+    float v = u01(rng);
+
+    // Handle the case where u + v > 1 by reflecting
+    if (u + v > 1.0f) {
+        u = 1.0f - u;
+        v = 1.0f - v;
+    }
+
+    // Compute barycentric coordinates
+    float w = 1.0f - u - v;
+
+    // Get triangle vertices (assuming Triangle has v0, v1, v2 as glm::vec3)
+    glm::vec3 p0 = tri.v[0];
+    glm::vec3 p1 = tri.v[1];
+    glm::vec3 p2 = tri.v[2];
+
+    // Compute point on triangle
+    glm::vec3 point = w * p0 + u * p1 + v * p2;
+
+    // Compute triangle normal (assuming vertices are in counter-clockwise order)
+    glm::vec3 edge1 = p1 - p0;
+    glm::vec3 edge2 = p2 - p0;
+    normal = glm::normalize(glm::cross(edge1, edge2));
+
+    return point;
+}
+
+// Helper function to compute triangle surface area in world space
+__device__ float triWorldSurfaceArea(const Triangle& tri) {
+    glm::vec3 p0 = tri.v[0];
+    glm::vec3 p1 = tri.v[1];
+    glm::vec3 p2 = tri.v[2];
+
+    glm::vec3 edge1 = p1 - p0;
+    glm::vec3 edge2 = p2 - p0;
+
+    // Compute cross product and its magnitude
+    glm::vec3 cross = glm::cross(edge1, edge2);
+    float area = 0.5f * glm::length(cross);
+
+    return area;
+}
+
 __device__ bool isVisibleToPoint(
     glm::vec3 origin,
     glm::vec3 target,
@@ -720,9 +762,10 @@ __device__ glm::vec3 sampleDirectLight(
     glm::vec3 hitPoint,
     glm::vec3 surfaceNormal,
     glm::vec3 throughput,
-    glm::vec3 albedo,
-    int* emissiveGeoms,
-    int numEmissiveGeoms,
+    glm::vec3& v,
+    BsdfParams& p,
+    int* emissiveTris,
+    int numEmissiveTris,
     Geom* geoms,
     Material* materials,
     Triangle* tris,
@@ -731,21 +774,29 @@ __device__ glm::vec3 sampleDirectLight(
     int geoms_size,
     thrust::default_random_engine& rng)
 {
-    if (numEmissiveGeoms <= 0) return glm::vec3(0.0f);
+    if (numEmissiveTris <= 0) return glm::vec3(0.0f);
 
     thrust::uniform_real_distribution<float> u01(0, 1);
-    int lightIdx = (int)(u01(rng) * numEmissiveGeoms);
+    int lightIdx = (u01(rng) * numEmissiveTris);
+    if (lightIdx >= numEmissiveTris) lightIdx = numEmissiveTris - 1;
+    /*int lightIdx = (int)(u01(rng) * numEmissiveGeoms);
     if (lightIdx >= numEmissiveGeoms) lightIdx = numEmissiveGeoms - 1;
 
-    Geom lightGeom = geoms[emissiveGeoms[lightIdx]];
-    Material lightMat = materials[lightGeom.materialid];
+    Geom lightGeom = geoms[emissiveGeoms[lightIdx]];*/
+    Triangle emissionTri = tris[lightIdx];
+    int emissiveMat = tris[lightIdx].materialid;
+    Material lightMat = materials[emissiveMat];
     if (lightMat.emittance <= 0.0f) return glm::vec3(0.0f);
 
     glm::vec3 lightNormal;
     glm::vec3 lightPoint;
     float lightAreaPdf;
 
-    if (lightGeom.type == CUBE)
+
+    lightPoint = samplePointOnTri(emissionTri, lightNormal, rng);
+    lightAreaPdf = 1.0 / (triWorldSurfaceArea(emissionTri) * (float)numEmissiveTris);
+
+    /*if (lightGeom.type == CUBE)
     {
         lightPoint = samplePointOnCube(lightGeom, lightNormal, rng);
         lightAreaPdf = 1.0f / (cubeWorldSurfaceArea(lightGeom) * (float)numEmissiveGeoms);
@@ -758,8 +809,7 @@ __device__ glm::vec3 sampleDirectLight(
     else
     {
         return glm::vec3(0.0f);
-    }
-
+    }*/
     glm::vec3 wi = lightPoint - hitPoint;
     float distSq = glm::dot(wi, wi);
     if (distSq < EPSILON) return glm::vec3(0.0f);
@@ -775,9 +825,9 @@ __device__ glm::vec3 sampleDirectLight(
         return glm::vec3(0.0f);
     }
 
-    glm::vec3 emitted = lightMat.color * lightMat.emittance;
-    glm::vec3 brdf = albedo * (1.0f / PI);
-    return throughput * brdf * emitted * cosThetaSurface * cosThetaLight / (distSq * lightAreaPdf);
+    glm::vec3 lightRadiance = lightMat.color * lightMat.emittance;
+    glm::vec3 bsdf = bsdfEval(p, surfaceNormal, v, wi);
+    return throughput * bsdf * lightRadiance * cosThetaSurface * cosThetaLight / (distSq * lightAreaPdf);
 }
 
 __device__ Material resolveMaterial(Material material, const ShadeableIntersection& intersection)
@@ -791,7 +841,7 @@ __device__ Material resolveMaterial(Material material, const ShadeableIntersecti
     {
         float4 tx = tex2D<float4>(material.specularMap, intersection.uv.x, intersection.uv.y);
         float luminance = tx.x * 0.2126f + tx.y * 0.7152f + tx.z * 0.0722f;
-        material.specular = luminance * 300;
+        material.roughness = 1 - luminance - 0.5;
     }
     return material;
 }
@@ -801,7 +851,7 @@ __device__ Material resolveMaterial(Material material, const ShadeableIntersecti
 /**
 * Generate PathSegments with rays from the camera through the screen into the
 * scene, which is the first bounce of rays.
-*
+* TO DO maybe
 * Antialiasing - add rays for sub-pixel sampling
 * motion blur - jitter rays "in time"
 * lens effect - jitter ray origin positions based on a lens
@@ -834,10 +884,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
-// TODO:
-// computeIntersections handles generating ray intersections ONLY.
-// Generating new rays is handled in your shader(s).
-// Feel free to modify the code below.
+
 __global__ void computeIntersections(
     int depth,
     int num_paths,
@@ -975,15 +1022,7 @@ __global__ void computeIntersections(
     }
 }
 
-// LOOK: "fake" shader demonstrating what you might do with the info in
-// a ShadeableIntersection, as well as how to use thrust's random number
-// generator. Observe that since the thrust random number generator basically
-// adds "noise" to the iteration, the image should start off noisy and get
-// cleaner as more iterations are computed.
-//
-// Note that this shader does NOT do a BSDF evaluation!
-// Your shaders should handle that - this can allow techniques such as
-// bump mapping.
+
 __global__ void shadeDiffuseBRDFMaterial(
     int iter,
     int traceDepth,
@@ -996,8 +1035,8 @@ __global__ void shadeDiffuseBRDFMaterial(
     Triangle* tris,
     int num_tris,
     BVH_node_gpu* bvh,
-    int* emissiveGeoms,
-    int numEmissiveGeoms)
+    int* emissiveTris,
+    int numEmissiveTris)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
@@ -1023,7 +1062,8 @@ __global__ void shadeDiffuseBRDFMaterial(
             Material material = resolveMaterial(materials[intersection.materialId], intersection);
             glm::vec3 hitPoint = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
             glm::vec3 normal = glm::normalize(intersection.surfaceNormal);
-
+            glm::vec3 v = glm::normalize(pathSegment.ray.direction);
+            BsdfParams& p = makeParams(material);
             if (material.emittance > 0.0f)
             {
                 pathSegment.color += pathSegment.throughput * (material.color * material.emittance);
@@ -1031,15 +1071,15 @@ __global__ void shadeDiffuseBRDFMaterial(
                 return;
             }
 
-            glm::vec3 albedo = material.color;
-
-            pathSegment.color += sampleDirectLight(
-                hitPoint,
+            
+            // TO DO: check if this even works at all
+            pathSegment.color += sampleDirectLight(hitPoint,
                 normal,
                 pathSegment.throughput,
-                albedo,
-                emissiveGeoms,
-                numEmissiveGeoms,
+                v,
+                p,
+                emissiveTris,
+                numEmissiveTris,
                 geoms,
                 materials,
                 tris,
@@ -1054,7 +1094,7 @@ __global__ void shadeDiffuseBRDFMaterial(
                 return;
             }
 
-            scatterRay(pathSegment, hitPoint, normal, material, rng);
+            scatterRay(pathSegment, hitPoint, normal, p, rng);
         }
         else
         {
@@ -1102,29 +1142,18 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     //   * You can pass the Camera object to that kernel.
     //   * Each path ray must carry at minimum a (ray, color) pair,
     //   * where color starts as the multiplicative identity, white = (1, 1, 1).
-    //   * This has already been done for you.
     // * For each depth:
     //   * Compute an intersection in the scene for each path ray.
-    //     A very naive version of this has been implemented for you, but feel
-    //     free to add more primitives and/or a better algorithm.
     //     Currently, intersection distance is recorded as a parametric distance,
     //     t, or a "distance along the ray." t = -1.0 indicates no intersection.
     //     * Color is attenuated (multiplied) by reflections off of any object
-    //   * TODO: Stream compact away all of the terminated paths.
-    //     You may use either your implementation or `thrust::remove_if` or its
-    //     cousins.
-    //     * Note that you can't really use a 2D kernel launch any more - switch
-    //       to 1D.
     //   * TODO: Shade the rays that intersected something or didn't bottom out.
     //     That is, color the ray by performing a color computation according
     //     to the shader, then generate a new ray to continue the ray path.
-    //     We recommend just updating the ray's PathSegment in place.
     //     Note that this step may come before or after stream compaction,
     //     since some shaders you write may also cause a path to terminate.
-    // * Finally, add this iteration's results to the image. This has been done
-    //   for you.
+    // * Finally, add this iteration's results to the image. 
 
-    // TODO: perform one iteration of path tracing
 
     generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
@@ -1181,8 +1210,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_tris,
             num_tris,
             dev_bvh,
-            dev_emissive_geoms,
-            num_emissive_geoms
+            dev_emissive_tris,
+            num_emissive_tris
         );
 
         // compact: live paths to front, dead to back
