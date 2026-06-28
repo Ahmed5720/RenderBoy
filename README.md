@@ -12,7 +12,7 @@ Although very powerful and beautiful, so far this renderer falls slightly short 
 ## Renders
 
 ### Fireplace Scene
-![Fire Place @ 2200 Samples, Depth = 4](img/fireplace1k.png)
+![Fire Place @ 2200 Samples, Depth = 4](img/fireplacef1k.png)
 *2200 samples, ray depth = 4*
 
 ### Stanford Dragon Scene
