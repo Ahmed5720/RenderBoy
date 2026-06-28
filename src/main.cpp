@@ -395,7 +395,19 @@ int main(int argc, char** argv)
 
     return 0;
 }
+glm::vec3 reinhard(glm::vec3 c) {
+    return c / (1.0f + c);
+}
 
+glm::vec3 linearToSRGB(glm::vec3 c) {
+    c = glm::max(c, glm::vec3(0.0f));
+    glm::vec3 lo = c * 12.92f;
+    glm::vec3 hi = 1.055f * glm::pow(c, glm::vec3(1.0f / 2.4f)) - 0.055f;
+    return glm::vec3(
+        c.x <= 0.0031308f ? lo.x : hi.x,
+        c.y <= 0.0031308f ? lo.y : hi.y,
+        c.z <= 0.0031308f ? lo.z : hi.z);
+}
 void saveImage()
 {
     float samples = iteration;
@@ -408,7 +420,13 @@ void saveImage()
         {
             int index = x + (y * width);
             glm::vec3 pix = renderState->image[index];
-            img.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
+            glm::vec3 hdr = pix / (float)samples;
+            float exposure = 1.0f;
+            hdr *= exposure;
+            glm::vec3 mapped = reinhard(hdr);
+            glm::vec3 disp = linearToSRGB(mapped);
+
+            img.setPixel(width - 1 - x, y, glm::vec3(disp)); // / samples);
         }
     }
 

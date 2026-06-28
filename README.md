@@ -12,12 +12,12 @@ Although very powerful and beautiful, so far this renderer falls slightly short 
 ## Renders
 
 ### Fireplace Scene
-![Fire Place @ 2200 Samples, Depth = 4](img/fireplacef1k.png)
-*2200 samples, ray depth = 4*
+![Fire Place @ 2200 Samples, Depth = 4](img/postpros.png)
+*1200 samples, ray depth = 8*
 
 ### Stanford Dragon Scene
-![Stanford Dragon Scene @ 2200 Samples, Depth = 4](img/nee.png)
-*2200 samples, ray depth = 4*
+![Stanford Dragon Scene @ 2200 Samples, Depth = 4](img/toneMapped.png)
+*1200 samples, ray depth = 8*
 
 ### BVH Visualization
 ![BVH visualization of Stanford Scene](img/bvh%20vis2.png)
@@ -34,10 +34,13 @@ The project is implemented in **C++/OpenGL/CUDA**:
 ### Features So Far
 - **OBJ loading** with diffuse/specular texture sampling
 - **Bounding Volume Hierarchy** (using Surface Area Heuristic)
-- **Physically Based BRDF**
+- Direct Lighting (Next Event Estimation Importance Sampling)
+- **Physically Based Rendering Rendering** Cook-Torrance Specular + Lambertian Diffuse BSDF with importance sampling
+- Tone Mapping (Rienhard)
 
 ### Performance Improvements
 - Stream compaction
+- Russian Roulette Termination
 - First-hit caching
 - Material-based sorting
 
@@ -45,9 +48,7 @@ The project is implemented in **C++/OpenGL/CUDA**:
 
 ## Future Work
 
-- [ ] Disney BRDF
-- [ ] Tone Mapping
-- [ ] Support for more scene formats (USD)
+- [ ] Support for Transmission & refraction
 - [ ] Further optimization and denoising (Intel OpenImage Denoising)
 
 ---

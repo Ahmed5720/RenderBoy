@@ -50,6 +50,20 @@ thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int de
     return thrust::default_random_engine(h);
 }
 
+__device__ inline glm::vec3 reinhard(glm::vec3 c) {
+    return c / (1.0f + c);
+}
+
+__device__ inline glm::vec3 linearToSRGB(glm::vec3 c) {
+    c = glm::max(c, glm::vec3(0.0f));
+    glm::vec3 lo = c * 12.92f;
+    glm::vec3 hi = 1.055f * glm::pow(c, glm::vec3(1.0f / 2.4f)) - 0.055f;
+    return glm::vec3(
+        c.x <= 0.0031308f ? lo.x : hi.x,
+        c.y <= 0.0031308f ? lo.y : hi.y,
+        c.z <= 0.0031308f ? lo.z : hi.z);
+}
+
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm::vec3* image)
 {
@@ -60,17 +74,26 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm
     {
         int index = x + (y * resolution.x);
         glm::vec3 pix = image[index];
+        glm::vec3 hdr = image[index] / (float)iter;
+        float exposure = 1.0f;
+        hdr *= exposure;
+        glm::vec3 mapped = reinhard(hdr);
+        glm::vec3 disp = linearToSRGB(mapped);
 
-        glm::ivec3 color;
-        color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
-        color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
-        color.z = glm::clamp((int)(pix.z / iter * 255.0), 0, 255);
+        glm::ivec3 color = glm::clamp(glm::ivec3(disp * 255.0f), 0, 255);
+        pbo[index] = make_uchar4(color.x, color.y, color.z, 0);
+ 
 
-        // Each thread writes one pixel location in the texture (textel)
-        pbo[index].w = 0;
-        pbo[index].x = color.x;
-        pbo[index].y = color.y;
-        pbo[index].z = color.z;
+        //glm::ivec3 color;
+        //color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
+        //color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
+        //color.z = glm::clamp((int)(pix.z / iter * 255.0), 0, 255);
+
+        //// Each thread writes one pixel location in the texture (textel)
+        //pbo[index].w = 0;
+        //pbo[index].x = color.x;
+        //pbo[index].y = color.y;
+        //pbo[index].z = color.z;
     }
 }
 
@@ -1062,6 +1085,12 @@ __global__ void shadeDiffuseBRDFMaterial(
 
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegment.remainingBounces);
 
+       // russian roulette termination
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        float q = glm::clamp(glm::max(pathSegment.throughput.x, glm::max(pathSegment.throughput.y, pathSegment.throughput.z)), 0.05f, 0.95f);
+        if (u01(rng) >= q) { pathSegment.remainingBounces = 0; return; }
+        pathSegment.throughput /= q;
+       
         if (intersection.t > 0.0f)
         {
             Material material = resolveMaterial(materials[intersection.materialId], intersection);
@@ -1077,7 +1106,7 @@ __global__ void shadeDiffuseBRDFMaterial(
             }
 
             
-            // TO DO: check if this even works at all
+            
             pathSegment.color += sampleDirectLight(hitPoint,
                 normal,
                 pathSegment.throughput,
@@ -1098,8 +1127,8 @@ __global__ void shadeDiffuseBRDFMaterial(
                 pathSegment.remainingBounces = 0;
                 return;
             }
-
-           scatterRay(pathSegment, hitPoint, normal, p, rng);
+            
+             scatterRay(pathSegment, hitPoint, normal, p, rng);
         }
         else
         {
@@ -1117,7 +1146,7 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
     if (index < nPaths)
     {
         PathSegment iterationPath = iterationPaths[index];
-        image[iterationPath.pixelIndex] += iterationPath.color;
+        image[iterationPath.pixelIndex] += iterationPath.color; //  /iterationPath.color + 1.0f);
     }
 }
 
