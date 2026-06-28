@@ -609,6 +609,8 @@ __device__ void intersectScene(
                         const Triangle& tr = tris[i];
                         t_min = tt;
                         normal = glm::normalize(tmpBary.x * tr.n[0] + tmpBary.y * tr.n[1] + tmpBary.z * tr.n[2]);
+                        //if (glm::dot(normal, -ray.direction) < 0.0f) 
+                        //    normal = -normal; // fix normal winding issue
                         uv = tmpBary.x * tr.uv[0] + tmpBary.y * tr.uv[1] + tmpBary.z * tr.uv[2];
                         hit_material = tr.materialid;
                     }
@@ -693,15 +695,15 @@ __device__ glm::vec3 samplePointOnTri(const Triangle& tri, glm::vec3& normal, th
     float v = u01(rng);
 
     // Handle the case where u + v > 1 by reflecting
-    if (u + v > 1.0f) {
+    /*if (u + v > 1.0f) {
         u = 1.0f - u;
         v = 1.0f - v;
-    }
+    }*/
 
     // Compute barycentric coordinates
     float w = 1.0f - u - v;
 
-    // Get triangle vertices (assuming Triangle has v0, v1, v2 as glm::vec3)
+   
     glm::vec3 p0 = tri.v[0];
     glm::vec3 p1 = tri.v[1];
     glm::vec3 p2 = tri.v[2];
@@ -709,11 +711,14 @@ __device__ glm::vec3 samplePointOnTri(const Triangle& tri, glm::vec3& normal, th
     // Compute point on triangle
     glm::vec3 point = w * p0 + u * p1 + v * p2;
 
-    // Compute triangle normal (assuming vertices are in counter-clockwise order)
+    
     glm::vec3 edge1 = p1 - p0;
     glm::vec3 edge2 = p2 - p0;
-    normal = glm::normalize(glm::cross(edge1, edge2));
-
+    //normal = glm::normalize(glm::cross(edge1, edge2));
+    normal = glm::normalize(
+        w * tri.n[0] +
+        u * tri.n[1] +
+        v * tri.n[2]);
     return point;
 }
 
@@ -747,7 +752,7 @@ __device__ bool isVisibleToPoint(
     if (dist < EPSILON) return false;
 
     Ray shadowRay;
-    shadowRay.origin = origin + wi / dist * 0.001f;
+    shadowRay.origin = origin;
     shadowRay.direction = wi / dist;
 
     float t;
@@ -783,8 +788,8 @@ __device__ glm::vec3 sampleDirectLight(
     if (lightIdx >= numEmissiveGeoms) lightIdx = numEmissiveGeoms - 1;
 
     Geom lightGeom = geoms[emissiveGeoms[lightIdx]];*/
-    Triangle emissionTri = tris[lightIdx];
-    int emissiveMat = tris[lightIdx].materialid;
+    Triangle emissionTri = tris[emissiveTris[lightIdx]];
+    int emissiveMat = emissionTri.materialid;
     Material lightMat = materials[emissiveMat];
     if (lightMat.emittance <= 0.0f) return glm::vec3(0.0f);
 
@@ -826,7 +831,7 @@ __device__ glm::vec3 sampleDirectLight(
     }
 
     glm::vec3 lightRadiance = lightMat.color * lightMat.emittance;
-    glm::vec3 bsdf = bsdfEval(p, surfaceNormal, v, wi);
+    glm::vec3 bsdf = bsdfEval(p, -surfaceNormal, v, -wi);
     return throughput * bsdf * lightRadiance * cosThetaSurface * cosThetaLight / (distSq * lightAreaPdf);
 }
 
@@ -1094,7 +1099,7 @@ __global__ void shadeDiffuseBRDFMaterial(
                 return;
             }
 
-            scatterRay(pathSegment, hitPoint, normal, p, rng);
+           scatterRay(pathSegment, hitPoint, normal, p, rng);
         }
         else
         {
