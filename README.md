@@ -46,6 +46,7 @@ The project is implemented in **C++/OpenGL/CUDA**:
 ## Future Work
 
 - [ ] Disney BRDF
+- [ ] Tone Mapping
 - [ ] Support for more scene formats (USD)
 - [ ] Further optimization and denoising (Intel OpenImage Denoising)
 
