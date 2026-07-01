@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RenderBoy — A Real-Time CUDA PathTracer</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+
+<style>
+:root{
+  --bg:#f1efe6;
+  --surface:#e8e3d3;
+  --card:#fbfaf6;
+  --border:#d7d0bb;
+  --ink:#211f19;
+  --ink-muted:#6c6455;
+  --teal:#1f4d54;
+  --teal-dim:rgba(31,77,84,.09);
+  --copper:#bb1f1f;
+  --copper-dim:rgba(161, 31, 31, 0.1);
+  --mono:'JetBrains Mono', monospace;
+  --display:'Space Grotesk', sans-serif;
+  --body:'Inter', sans-serif;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--body);
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--copper-dim);color:var(--copper);}
+a{color:var(--teal);text-decoration:none;}
+a:hover{color:var(--copper);}
+
+#progress{
+  position:fixed;top:0;left:0;height:3px;width:0%;
+  background:linear-gradient(90deg,var(--teal),var(--copper));
+  z-index:1000;transition:width .05s linear;
+}
+
+/* ---------- nav ---------- */
+nav{
+  position:sticky;top:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 32px;
+  z-index:900;
+  background:rgba(241,239,230,.88);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+}
+nav .wordmark{
+  font-family:var(--display);font-weight:600;font-size:1.05rem;letter-spacing:.02em;
+}
+nav .wordmark span{color:var(--copper);}
+.contact-links{
+  display:flex;align-items:center;gap:22px;
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+}
+.contact-links a{color:var(--ink-muted);border-bottom:1px solid transparent;padding-bottom:2px;}
+.contact-links a:hover{color:var(--copper);border-color:var(--copper);}
+.contact-links .dot{color:var(--border);}
+
+/* ---------- top of page: repo link + hero render ---------- */
+.top{
+  max-width:1040px;margin:0 auto;padding:70px 32px 0;
+}
+.repo-pill{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:8px 16px;
+  border:1px solid var(--border);
+  background:var(--card);
+  border-radius:100px;
+  font-family:var(--mono);font-size:.78rem;color:var(--ink-muted);
+  margin-bottom:28px;
+  transition:border-color .2s ease, color .2s ease;
+}
+.repo-pill:hover{border-color:var(--copper);color:var(--copper);}
+.repo-pill svg{width:14px;height:14px;flex-shrink:0;}
+
+.title-row{margin-bottom:34px;}
+h1.proj-title{
+  font-family:var(--display);font-weight:700;
+  font-size:clamp(2.6rem,7vw,4.6rem);
+  line-height:1;letter-spacing:-.02em;
+  margin-bottom:10px;
+}
+h1.proj-title span{color:var(--copper);}
+.proj-subtitle{
+  font-family:var(--mono);font-size:.95rem;color:var(--ink-muted);
+  letter-spacing:.04em;
+}
+
+.hero-render{
+  width:100%;
+  aspect-ratio:1920/1080;
+  border:1px solid var(--border);
+  border-radius:6px;
+  overflow:hidden;
+  background:var(--surface);
+  box-shadow:0 18px 40px -22px rgba(33,31,25,.35);
+}
+.hero-render img{width:100%;height:100%;object-fit:cover;display:block;}
+.hero-render .fallback{
+  display:none;width:100%;height:100%;
+  align-items:center;justify-content:center;flex-direction:column;gap:8px;
+  background:
+    repeating-linear-gradient(135deg, var(--card), var(--card) 12px, var(--surface) 12px, var(--surface) 24px);
+  color:var(--ink-muted);text-align:center;padding:20px;
+}
+.hero-render .fallback .fname{font-family:var(--mono);font-size:.78rem;}
+
+/* ---------- layout ---------- */
+main{max-width:760px;margin:0 auto;padding:0 32px;}
+
+.stage{
+  padding:76px 0;
+  border-bottom:1px solid var(--border);
+}
+.stage:first-of-type{padding-top:90px;}
+.stage:last-of-type{border-bottom:none;}
+
+.stage-head{
+  display:flex;align-items:baseline;gap:14px;margin-bottom:22px;flex-wrap:wrap;
+}
+.stage-num{
+  font-family:var(--mono);font-size:.75rem;color:var(--copper);letter-spacing:.05em;white-space:nowrap;
+}
+.stage h2{
+  font-family:var(--display);font-weight:600;font-size:1.55rem;letter-spacing:-.01em;
+}
+
+.stage p{margin-bottom:16px;color:var(--ink);}
+.stage p:last-of-type{margin-bottom:0;}
+.stage strong{color:var(--ink);font-weight:600;}
+.stage em{font-style:italic;color:var(--ink);}
+
+/* equations */
+.eq-block{
+  margin:22px 0;padding:20px 22px;
+  background:var(--card);border:1px solid var(--border);border-left:3px solid var(--teal);
+  border-radius:4px;overflow-x:auto;
+}
+.eq-block .katex-display{margin:.3em 0;}
+
+/* figures */
+figure{margin:30px 0;}
+.fig-frame{
+  position:relative;
+  border:1px solid var(--border);border-radius:6px;overflow:visible;
+  background:var(--card);
+  /*aspect-ratio:16/10; */
+}
+.fig-frame img{width:100%;height:100%;object-fit:cover;display:block;}
+.fig-frame .fallback{
+  display:none;position:absolute;inset:0;
+  flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  background:
+    repeating-linear-gradient(135deg, var(--card), var(--card) 10px, var(--surface) 10px, var(--surface) 20px);
+  color:var(--ink-muted);text-align:center;padding:20px;
+}
+.fig-frame .fallback .fname{font-family:var(--mono);font-size:.72rem;}
+figcaption{
+  margin-top:10px;font-size:.85rem;color:var(--ink-muted);line-height:1.55;
+}
+figcaption .fig-label{color:var(--copper);font-family:var(--mono);font-size:.72rem;margin-right:8px;}
+
+/* footer */
+footer{
+  max-width:760px;margin:0 auto;padding:64px 32px 90px;
+  display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:20px;
+  border-top:1px solid var(--border);
+}
+footer .fmark{font-family:var(--display);font-weight:600;font-size:1rem;}
+footer .fmark span{color:var(--copper);}
+
+@media (max-width:640px){
+  nav{padding:14px 20px;}
+  .top{padding:56px 20px 0;}
+  main{padding:0 20px;}
+  footer{padding:50px 20px 70px;flex-direction:column;align-items:flex-start;}
+  .stage{padding:56px 0;}
+  .stage:first-of-type{padding-top:64px;}
+  .stage h2{font-size:1.3rem;}
+  .contact-links{gap:14px;font-size:.66rem;}
+}
+
+a:focus-visible, button:focus-visible{outline:2px solid var(--copper);outline-offset:3px;}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<nav>
+  <div class="wordmark">Render<span>Boy</span></div>
+  <div class="contact-links">
+    <a href="https://github.com/Ahmed5720" target="_blank" rel="noopener">GitHub</a>
+    <span class="dot">·</span>
+    <a href="https://www.linkedin.com/in/ahmed-nassar-8a5ba4188/" target="_blank" rel="noopener">LinkedIn</a>
+    <span class="dot">·</span>
+    <a href="mailto:Ahmednassar5720@gmail.com">Email</a>
+  </div>
+</nav>
+
+<div class="top">
+  <a class="repo-pill" href="https://github.com/Ahmed5720/RenderBoy" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18c-4.51 2-5-2-7-2"/><path d="M9 21v-3.5c0-.6.2-1 .5-1.3-3-.3-6-1.5-6-6.7 0-1.5.5-2.7 1.4-3.6-.2-.3-.6-1.7.1-3.5 0 0 1.1-.3 3.7 1.4a12.6 12.6 0 0 1 6.6 0C17.9 2.4 19 2.7 19 2.7c.7 1.8.3 3.2.1 3.5.9.9 1.4 2.1 1.4 3.6 0 5.2-3 5.9-6 6.7.3.4.5 1 .5 1.9V21"/></svg>
+    github.com/Ahmed5720/RenderBoy
+  </a>
+
+  <div class="title-row">
+    <h1 class="proj-title">Render<span>Boy</span></h1>
+    <div class="proj-subtitle">A Real-Time CUDA PathTracer</div>
+  </div>
+
+  <div class="hero-render">
+    <img src="hires.png" alt="Final path-traced render, 1315 samples"
+         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+    <div class="fallback">
+      <div class="fname">dragon.2026-06-28_21-27-52z.1315samp.png</div>
+      <div style="font-size:.72rem;opacity:.75;font-family:var(--mono);">1920 × 1080 — place the render next to this file</div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+  <!-- 01 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§1</span>
+      <h2>OpenGL CUDA Interop Setup</h2>
+    </div>
+    <p>One of the key goals of the project is for it to be real-time (or close enough to real-time). To achieve this, we send an updated framebuffer from CUDA to OpenGL every iteration with the updated image pixel data. This buffer is then mapped to a texture on a 2D quad, on which the image is drawn. This means we aren't using any of the graphics pipeline features of OpenGL beyond simply rendering a textured 2D quad. Every frame we shoot a single ray from every pixel in the window, and we accumulate slightly jittered samples every iteration on the same frame provided the view hasn't changed since the last frame. This approach lets us get a crisp image over time while still being able to render in real time, achieving our real-time design goal. Further optimization work is needed to actually hit a stable, high enough framerate.</p>
+  </div>
+
+  <!-- 02 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§2</span>
+      <h2>Camera Setup and Ray Generation</h2>
+    </div>
+    <p>The camera is defined by a position (the eye), a look-at target (or forward direction), and an up vector. From these we build an orthonormal basis: forward, right, and up. so we always have a consistent local coordinate frame for the camera regardless of how it's oriented in the scene.</p>
+    <p>Given the vertical field of view and the aspect ratio of the render target, we compute the dimensions of a virtual image plane sitting one unit in front of the camera along the forward axis. For every pixel <span class="math">(x, y)</span> in the window, we map its screen-space coordinate onto this image plane (using the plane's width/height and the pixel's normalized position within the resolution), and construct a ray whose origin is the camera's position and whose direction is the normalized vector from the camera through that point on the plane.</p>
+    <p>Because we're accumulating samples over multiple iterations (as described above), we jitter each pixel's sample position by a small random offset before generating its ray, every iteration. This means that instead of always sampling the exact center of a pixel, over time we sample many different sub-pixel positions, which is what gives us anti-aliasing basically for free as a side effect of the accumulation loop.</p>
+  </div>
+
+  <!-- 03 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§3</span>
+      <h2>Loading OBJ/MTL Mesh and Texture Sampling</h2>
+    </div>
+    <p>We use a simple header-only OBJ loader library to load all meshes in our scene. As a simplification, we assume the entire scene is just one large lump of triangles, each with an id into a list of materials, instead of building some sort of scene graph from the OBJ file description. This approach considerably simplifies constructing the BVH and sending it along with the mesh buffer to the GPU. However, the limitation here is that handling dynamic scenes becomes infeasible, as meshes are no longer separate entities.</p>
+    <p>We could solve that by retaining a scene graph (or even just a list of meshes) on the CPU side, and every time a mesh needs to be transformed in the scene, we'd update the corresponding CPU triangle buffer, rebuild the "global" BVH, and update its GPU-side buffer as well before resending it to the GPU. Needless to say, this isn't the best way to go about it, since BVH construction is an expensive recursive procedure, and rebuilding it from scratch frequently is suboptimal. The correct way to do this probably involves separate BVHs constructed for each scene object. These per-object BVHs can be transformed along with their objects at a small cost. Then a crude scene-wide acceleration structure (or some other top-level structure) is constructed every frame such that its leaf nodes are the individual scene objects' BVHs.</p>
+  </div>
+
+  <!-- 04 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§4</span>
+      <h2>Ray-Triangle Intersection (Möller-Trumbore)</h2>
+    </div>
+    <p>Given that we're mainly dealing with mesh representations, this algorithm can be considered the core of our program. As far as I know, Möller-Trumbore is the standard fast algorithm for computing the intersection between a ray and a triangle. What makes it nice is that it solves directly for the barycentric coordinates of the hit point without needing to explicitly computing the triangle's plane equation.</p>
+    <p>Given a ray with origin <span class="math">O</span> and direction <span class="math">D</span>, and a triangle with vertices <span class="math">V_0, V_1, V_2</span>, we define two edge vectors <span class="math">E_1 = V_1 - V_0</span> and <span class="math">E_2 = V_2 - V_0</span>. The algorithm sets up the intersection as a small linear system and solves it using Cramer's rule, which works out to a handful of cross and dot products:</p>
+
+    <div class="eq-block">
+      <div class="mathblock">P = D \times E_2 \qquad \text{det} = E_1 \cdot P</div>
+    </div>
+
+    <p>If <span class="math">\text{det}</span> is close to zero, the ray is (nearly) parallel to the triangle's plane, so there's no hit. Otherwise:</p>
+
+    <div class="eq-block">
+      <div class="mathblock">T = O - V_0 \qquad u = \frac{T \cdot P}{\text{det}}</div>
+    </div>
+
+    <p>If <span class="math">u &lt; 0</span> or <span class="math">u &gt; 1</span>, the hit point is outside the triangle, so we can bail out early. Otherwise:</p>
+
+    <div class="eq-block">
+      <div class="mathblock">Q = T \times E_1 \qquad v = \frac{D \cdot Q}{\text{det}}</div>
+    </div>
+
+    <p>If <span class="math">v &lt; 0</span> or <span class="math">u + v &gt; 1</span>, again the hit point is outside the triangle. Otherwise, the ray does intersect the triangle, and:</p>
+
+    <div class="eq-block">
+      <div class="mathblock">t = \frac{E_2 \cdot Q}{\text{det}}</div>
+    </div>
+
+    <p>gives us the distance along the ray to the intersection point. The values <span class="math">u</span> and <span class="math">v</span> are the barycentric coordinates of the hit, which we reuse later to interpolate the triangle's per-vertex normals and UVs across the surface.</p>
+  </div>
+
+  <!-- 05 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§5</span>
+      <h2>Bounding Volume Hierarchy Construction and SAH Motivation</h2>
+    </div>
+    <p>Without an acceleration structure, every ray has to test intersection against every triangle in the scene. This is of course wasteful and prevents us from ray tracing anything remotely complex. So a search structure is needed. I chose to implement a Bounding Volume Hierarchy (BVH). The BVH is constructed recursively: we build an axis-aligned bounding box (AABB) to encompass the entire scene's geometry, then recursively subdivide that box into left and right children, build boxes for them, and pass down the geometry each one contains. A few implementation questions come up here: how do we store geometry in the nodes efficiently, how do we decide where to subdivide, when do we stop subdividing (i.e. when do we arrive at a leaf node), and finally, how do we lay this whole structure out in a GPU-friendly way.</p>
+    <p>For the split itself, the simplest approach is to pick the longest axis of the current node's bounding box and split the geometry at the median (by centroid) along that axis, which is cheap and guarantees a roughly balanced tree. The problem is that a purely balanced tree isn't necessarily a <em>fast</em> tree to traverse: It ignores how much empty space each child box actually covers. This is where the Surface Area Heuristic (SAH) comes in: since the probability that a random ray hits a given box is roughly proportional to that box's surface area, SAH estimates the expected traversal cost of a candidate split as (surface area of left child <span class="math">\times</span> triangles in left) + (surface area of right child <span class="math">\times</span> triangles in right), and picks the split that minimizes this cost instead of just the split that balances triangle counts. It's more expensive to evaluate at build time (you're effectively testing many candidate split planes per node), but it tends to produce noticeably shallower, faster-to-traverse trees for non-uniform scenes.</p>
+    <p>Where the CPU node struct stores a 6-float AABB, an index to its left and right children (or <span class="math">-1</span> if it's a leaf), and a vector of indices into the triangle buffer denoting the triangles it contains, the GPU node buffer differs in that it identifies its constituent triangles by a start index and a count into a new, sorted triangle buffer. This is necessary because we can only allocate a fixed-size buffer on the GPU side, so having some leaf nodes be much larger than others isn't feasible. To do this, we need an extra pass at the end of construction that builds this new GPU BVH node buffer while simultaneously building the reordered triangle buffer that gets sent to the GPU.</p>
+
+    <figure>
+      <div class="fig-frame">
+        <img src="bvhvis5.png" alt="BVH heat-map visualization by AABB test count"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="fallback"><div class="fname">bvhvis5.png</div></div>
+      </div>
+      <figcaption><span class="fig-label">FIG.</span>In ShadeBRDFMaterial, I've added code to skip shading and instead color a ray on a gradient based on how many AABB intersections were performed. Yellowish boxes mean deeper searches in the BVH tree, and darker violet ones mean fewer searches.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 06 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§6</span>
+      <h2>GPU BVH Traversal</h2>
+    </div>
+    <p>At this point we've constructed a BVH on the CPU side, allocated memory for it on the GPU, and sent it there as buffers via <code>cudaMalloc</code> &amp; <code>cudaMemcpy</code>. We have an ordered triangle buffer and a GPU BVH node buffer. The only remaining issue is that we can't really traverse this structure recursively until we reach a leaf node, since recursion isn't favored on the GPU for a few reasons: threads execute in lockstep (SIMT), so a naive recursive traversal means every thread in a warp is stuck waiting on whichever thread recurses the deepest; GPU call stacks are limited and eat into the already-scarce per-thread register/local memory budget; and function-call overhead in general is more costly on GPU architectures than on CPU. Instead, we traverse iteratively by maintaining an explicit stack (a small fixed-size array per ray) that we push and pop node indices onto as we walk down the tree, which avoids all of the above.</p>
+  </div>
+
+  <!-- 07 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§7</span>
+      <h2>The Light Transport Equation, BRDF, and Motivation for Importance Sampling</h2>
+    </div>
+    <p>Now that we have an efficient way to determine when a ray intersects a triangle, the next step is to determine how a new ray should bounce off of that triangle. There are two central questions about this ray: (1) where does it go next (direction), and (2) what is its new color (payload)? Recall that, at its essence, our program simulates light transport by simply bouncing rays around based on the surface properties of the geometry they hit, and attenuating the color of these rays based on the color of the surfaces they bounce off of. In the final gather kernel, we color each pixel by the attenuated color of the ray launched from it.</p>
+    <p>To determine the color and direction we use the light transport equation (Kajiya). Simply put, the light leaving a given point towards a given direction is equal to the light it emits plus the sum of all incoming light directions (<span class="math">\omega_i</span>) above the point's normal-hemisphere that fall on it and get scattered in the viewing direction (<span class="math">\omega_o</span>), weighted by the angle of incidence of the incoming light. This integral can't be solved analytically, since determining the inner term <span class="math">L</span> (the incoming light at the point) requires knowing the outgoing light at whatever point it came from, which requires solving <em>its</em> integral, and so on recursively.</p>
+    <p>The standard solution is Monte Carlo integration: instead of evaluating every incoming direction, we sample from just a few, drawn from some distribution. If we sample uniformly, we need a lot of samples to converge. But if we sample from a distribution that closely resembles the true distribution of scattered light, we need far fewer samples, in fact only a single sample per bounce would suffice! This is the whole idea behind <em>importance sampling</em>: the closer our sampling distribution is to the true integrand, the lower the variance of our estimate, and the faster the image converges. To implement this we need to answer two more questions: how do we determine the portion of incoming light (<span class="math">\omega_i</span>) that gets scattered in a given viewing direction (<span class="math">\omega_o</span>), and how do we get samples from a distribution that resembles the true one?</p>
+    <p>The answer to the first question is the Bidirectional Reflectance Distribution Function (BRDF). This function takes an incoming direction and an outgoing direction, and gives the ratio of reflected radiance along <span class="math">\omega_o</span> to incoming irradiance along <span class="math">\omega_i</span>. Technically, a portion of the light is also transmitted/refracted into the surface, and that should be accounted for by the more general BSDF. But I'm planning to implement that at a later stage, so for now our simpler model can't simulate those light properties. I'll discuss my BRDF implementation in the next section.</p>
+    <p>To get samples from a distribution that resembles the true scattering distribution, we simplify things by assuming all light scatters in one of two ways: specular or diffuse. For specular scattering, the sample should be close to the direction of a perfect mirror reflection (the direction making an equal but opposite angle to the normal as the viewing direction, per the law of reflection). For diffuse scattering, the sample can be any random direction over the point's hemisphere. The goal is that for a highly diffuse material, the probability of picking a diffuse-lobe sample should be much higher than picking a specular-lobe sample, and vice versa for a shiny material. So we randomly choose one of the two sampling methods based on a "specular probability," which we derive from the material's roughness value. (This probability can also be weighted by the Fresnel term, so that even a mostly-diffuse surface leans more specular at grazing angles.)</p>
+
+    <figure>
+      <div class="fig-frame">
+        <img src="scattering.png" alt="Diffuse vs specular scattering distributions"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="fallback"><div class="fname">scattering.png</div></div>
+      </div>
+      <figcaption><span class="fig-label">FIG.</span>Diffuse vs. specular scattering distributions.</figcaption>
+    </figure>
+
+    <p>In my implementation we have two methods for these two problems. <strong>BRDFEval</strong> gives the throughput (attenuation) of the view ray based on the sample we chose, while <strong>BRDFSample</strong> gives us that ray sample based on the specular-vs-diffuse probability discussed above. In the next section I'll discuss <strong>BRDFEval</strong>.</p>
+  </div>
+
+  <!-- 08 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§8</span>
+      <h2>The Cook-Torrance BRDF: Diffuse/Dielectric/Metallic Surfaces</h2>
+    </div>
+    <p>We use the Cook-Torrance BRDF to model surface properties in a physically based way. This model is more physically accurate than Blinn-Phong, since it's normalized to ensure that the sum of light reflecting off a surface is never greater than the light incoming (the classic Blinn-Phong specular term isn't normalized this way, so at low roughness / high shininess values it can actually reflect more energy than it receives).</p>
+    <p>In the model, the color of the resulting ray is a mix of a diffuse component and a specular component, blended based on a computed Fresnel value. This Fresnel value is higher when the surface is viewed at a grazing angle, since specular surfaces tend to look more reflective from those angles.</p>
+    <p>The diffuse component is simply the Lambertian color divided by <span class="math">\pi</span>.</p>
+    <p>The specular component is a function of the normal distribution function and the geometry function, as well as the angles between the normal, the light, and the view directions. The normal distribution function, <strong>GGX</strong>, is a function of the material's roughness and the angle between the normal and the half vector (the half vector is just the vector halfway between the view and light directions, <span class="math">\text{normalize}(V + L)</span>). The geometry function, <strong>Schlick-GGX</strong>, models self-shadowing and masking of the microfacets; in practice it's evaluated twice, once using the view direction and once using the light direction, and the two results are multiplied together (this is Smith's method), rather than depending on the view direction alone. Finally, the Fresnel term is a function of the view direction, the half vector, and a base reflectivity <span class="math">F_0</span>. This base reflectivity is <span class="math">0.04</span> for non-metallic materials, and otherwise it's the material's diffuse color (reflections off metals are tinted by their diffuse color, whereas dielectrics don't tint the color of their reflections).</p>
+  </div>
+
+  <!-- 09 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§9</span>
+      <h2>Direct Lighting (Next Event Estimation with Importance Sampling)</h2>
+    </div>
+    <p>By now we have everything we need to get a final image. However, one problem persists: because the chances of a ray hitting a light source by chance are slim, it takes a huge number of iterations (well over 1000) before the image converges. The solution is to separately, directly sample a light before scattering rays. That is, when a ray intersects a triangle, we randomly choose a point on an emitting surface and sample a ray from the intersection point to that light point, provided there's no geometry obstructing its path. This "cheat code" makes the image converge much faster and produces a much crisper image, since there's now a far higher probability that a ray effectively "hits" a light source. However, because it requires an extra, expensive visibility check (to see if anything obstructs the path between the surface and the sampled light point), which means a whole new intersection test and therefore a new BVH traversal, our framerate drops by almost half. We could get around this by probabilistically choosing whether or not to perform direct light sampling per ray, in a similar vain to the Russian Roulette termination discussed later.</p>
+    <p>Also, after adding direct lighting, rays that scatter naturally and happen to still hit a light would end up double-counting that light's contribution, making it appear brighter than it should. The correct fix is multiple importance sampling (MIS), which weights a ray's contribution depending on whether it hit the light via direct sampling or via a natural scatter. I've decided to leave that for now, and instead just resolve the extra brightness by tonemapping the final image.</p>
+
+    <figure>
+      <div class="fig-frame">
+        <img src="DirectLighting.png" alt="Render using only direct lighting"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="fallback"><div class="fname">DirectLighting.png</div></div>
+      </div>
+      <figcaption><span class="fig-label">FIG.</span>Render with only direct lighting: only surfaces visible to a light get shaded, and shadows are very sharp since there's no global illumination yet.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 10 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§10</span>
+      <h2>Russian Roulette Ray Termination</h2>
+    </div>
+    <p>Russian Roulette termination probabilistically kills off rays before they reach the max bounce count, rather than always letting every ray run to the full depth. If we simply pick a random shorter max-depth and stop there, we would effectively just throw away energy and darken the image. Instead, at each bounce past some minimum depth, we compute a survival probability <span class="math">p</span> for the ray from its current throughput, We then draw a random number: if the ray "survives," we keep tracing it, but boost its throughput by dividing by <span class="math">p</span> to compensate for the rays that didn't survive; if it doesn't survive, we terminate it there. This keeps the estimator unbiased. On average, over many samples, the boosted-throughput survivors make up for the energy lost from the terminated rays, so the image still converges to the correct result. Depending on how high we set the max bounce value, this gives us roughly a 10% faster average frametime.</p>
+  </div>
+
+  <!-- 11 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§11</span>
+      <h2>Tone Mapping</h2>
+    </div>
+    <p>Without tonemapping, some pixels get very bright as the number of bounces increases, since luminance is otherwise unbounded. The simplest tonemapping strategy is <strong>Reinhard</strong>, which just maps a pixel's color <span class="math">c</span> to <span class="math">c / (c + 1)</span>. It does the job, although it does cause the image to look a little washed out / low-contrast.</p>
+
+    <figure>
+      <div class="fig-frame">
+        <img src="rienhardandnorienhard.png" alt="Before and after Reinhard tonemapping"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="fallback"><div class="fname">rienhardandnorienhard.png</div></div>
+      </div>
+      <figcaption><span class="fig-label">FIG.</span>Before (left) and after (right) Reinhard tonemapping.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 12 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§12</span>
+      <h2>Stream Compaction</h2>
+    </div>
+    <p>When a ray terminates prematurely (either because it hit a light source, bounced out of the scene, or was killed by Russian Roulette), we end up with threads doing no useful work, since the number of launched threads per kernel stays the same, causing wasted occupancy. The solution is using stream compaction: after each kernel launch, we reorder the rays so all the still-active ones are at the front of the list, using <code>thrust::partition</code>. The next kernel launch can then only run over this shorter, compacted list. That said, there's overhead to performing the compaction pass itself, which can end up outweighing the performance gain depending on the three factors mentioned above.</p>
+  </div>
+
+  <!-- 13 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="stage-num">§13</span>
+      <h2>Sorting by Material</h2>
+    </div>
+    <p>Two rays launched from nearby pixels (and therefore nearby threads) are very likely to hit the same geometry, and therefore the same material. Since global memory fetches are expensive (~200–400 cycles), the GPU fetches an entire cache line (128/256 bytes) hoping it'll be reused by other threads in the warp. If we sort rays by material id at intersection time, we get a much higher chance that a ray's material data has already been fetched from global memory by the first thread in the warp, so every other thread in that warp can pull it from cache at a dramatically lower cycle count (~30).</p>
+    <p>Another important effect of sorting is that threads working on the same material type follow the same execution path, so there's no divergence within a warp. Thread divergence hurts performance a lot: when threads in a warp take different branches (e.g. different material types), the GPU executes each branch path serially for the entire warp, masking off whichever threads didn't take that particular branch, so total execution time ends up being the sum of every diverging path taken by any thread in the warp, instead of just the cost of one path.</p>
+    <p>That said, as with many things in life, there's overhead to the sorting step itself. For scenes with only a few, fairly similar material types (we really only have 3 material types here, with similar execution patterns), we hardly see any performance gain on most of the scenes we tested. In fact, we see about a 15% performance loss. I'm curious whether a tangible improvement shows up once we add more material types and test on larger, less homogeneous scenes.</p>
+  </div>
+
+</main>
+
+<footer>
+  <div class="fmark">Render<span>Boy</span></div>
+  <div class="contact-links">
+    <a href="https://github.com/Ahmed5720" target="_blank" rel="noopener">GitHub</a>
+    <span class="dot">·</span>
+    <a href="https://www.linkedin.com/in/ahmed-nassar-8a5ba4188/" target="_blank" rel="noopener">LinkedIn</a>
+    <span class="dot">·</span>
+    <a href="mailto:Ahmednassar5720@gmail.com">Email</a>
+  </div>
+</footer>
+
+<script>
+  const bar = document.getElementById('progress');
+  function updateProgress(){
+    const h = document.documentElement;
+    const scrolled = h.scrollTop;
+    const height = h.scrollHeight - h.clientHeight;
+    bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+  }
+  document.addEventListener('scroll', updateProgress, {passive:true});
+  updateProgress();
+
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.eq-block .mathblock').forEach(el=>{
+      katex.render(el.textContent.trim(), el, {displayMode:true, throwOnError:false});
+    });
+    document.querySelectorAll('p .math, li .math').forEach(el=>{
+      katex.render(el.textContent.trim(), el, {displayMode:false, throwOnError:false});
+    });
+  });
+</script>
+
+</body>
+</html>
