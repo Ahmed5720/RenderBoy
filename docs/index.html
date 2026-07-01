@@ -20,7 +20,7 @@
   --ink-muted:#6c6455;
   --teal:#1f4d54;
   --teal-dim:rgba(31,77,84,.09);
-  --copper:#bb1f1f;
+  --copper:#d61919;
   --copper-dim:rgba(161, 31, 31, 0.1);
   --mono:'JetBrains Mono', monospace;
   --display:'Space Grotesk', sans-serif;
@@ -137,6 +137,21 @@ main{max-width:760px;margin:0 auto;padding:0 32px;}
   font-family:var(--display);font-weight:600;font-size:1.55rem;letter-spacing:-.01em;
 }
 
+/* framing sections: intro / conclusion / references sit apart from the numbered pipeline */
+.frame-stage .stage-num{color:var(--teal);text-transform:uppercase;font-size:.72rem;}
+.frame-stage p em.aside{
+  display:block;font-style:italic;color:var(--ink-muted);margin-bottom:16px;
+}
+.ref-list{list-style:none;}
+.ref-list li{
+  margin-bottom:10px;font-family:var(--mono);font-size:.88rem;
+  padding-left:18px;position:relative;
+}
+.ref-list li::before{
+  content:"→";position:absolute;left:0;color:var(--teal);
+}
+.ref-list a{word-break:break-all;}
+
 .stage p{margin-bottom:16px;color:var(--ink);}
 .stage p:last-of-type{margin-bottom:0;}
 .stage strong{color:var(--ink);font-weight:600;}
@@ -154,9 +169,8 @@ main{max-width:760px;margin:0 auto;padding:0 32px;}
 figure{margin:30px 0;}
 .fig-frame{
   position:relative;
-  border:1px solid var(--border);border-radius:6px;overflow:visible;
+  border:1px solid var(--border);border-radius:6px;overflow:hidden;
   background:var(--card);
-  /*aspect-ratio:16/10; */
 }
 .fig-frame img{width:100%;height:100%;object-fit:cover;display:block;}
 .fig-frame .fallback{
@@ -222,16 +236,26 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--copper);outline-of
   </div>
 
   <div class="hero-render">
-    <img src="hires.png" alt="Final path-traced render, 1315 samples"
+    <img src="hires.png" alt="Final path-traced render, 2500 samples"
          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
     <div class="fallback">
-      <div class="fname">dragon.2026-06-28_21-27-52z.1315samp.png</div>
+      <div class="fname">hires.png</div>
       <div style="font-size:.72rem;opacity:.75;font-family:var(--mono);">1920 × 1080 — place the render next to this file</div>
     </div>
   </div>
 </div>
 
 <main>
+
+  <!-- Introduction -->
+  <div class="stage frame-stage">
+    <div class="stage-head">
+      <span class="stage-num">Introduction</span>
+    </div>
+    <p>Originally, I began this project following the University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3. However, I quickly went down the very common rabbit hole of trying to build a state-of-the-art physically based rendering software.</p>
+    <p>Although very powerful and beautiful, so far this renderer falls slightly short of industry renderers like Pixar's RenderMan. Which is why I decided to call it RenderBoy. The hope is that RenderBoy will soon grow to be more like RenderMan.</p>
+    <p><em class="aside">jokes aside..</em>The following is a fairly comprehensive overview of the project and its most interesting challenges. I have willfully glossed over many details that are not as interesting.</p>
+  </div>
 
   <!-- 01 -->
   <div class="stage">
@@ -426,6 +450,25 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--copper);outline-of
     <p>Two rays launched from nearby pixels (and therefore nearby threads) are very likely to hit the same geometry, and therefore the same material. Since global memory fetches are expensive (~200–400 cycles), the GPU fetches an entire cache line (128/256 bytes) hoping it'll be reused by other threads in the warp. If we sort rays by material id at intersection time, we get a much higher chance that a ray's material data has already been fetched from global memory by the first thread in the warp, so every other thread in that warp can pull it from cache at a dramatically lower cycle count (~30).</p>
     <p>Another important effect of sorting is that threads working on the same material type follow the same execution path, so there's no divergence within a warp. Thread divergence hurts performance a lot: when threads in a warp take different branches (e.g. different material types), the GPU executes each branch path serially for the entire warp, masking off whichever threads didn't take that particular branch, so total execution time ends up being the sum of every diverging path taken by any thread in the warp, instead of just the cost of one path.</p>
     <p>That said, as with many things in life, there's overhead to the sorting step itself. For scenes with only a few, fairly similar material types (we really only have 3 material types here, with similar execution patterns), we hardly see any performance gain on most of the scenes we tested. In fact, we see about a 15% performance loss. I'm curious whether a tangible improvement shows up once we add more material types and test on larger, less homogeneous scenes.</p>
+  </div>
+
+  <!-- Conclusion -->
+  <div class="stage frame-stage">
+    <div class="stage-head">
+      <span class="stage-num">Conclusion</span>
+    </div>
+    <p>There's still plenty more that I would like to implement, mainly material properties like transmission and caustics, and integrating something like Intel's Open Image Denoising to get good images with way less iterations. But  in the more immediate future, I would like to perform a comprehensive performance analysis with Nsight systems & compute, as aside from some before and after tests of enabling and disabling some optimizations, I havent quite been able to see what is slowing us down.</p>
+  </div>
+
+  <!-- References -->
+  <div class="stage frame-stage">
+    <div class="stage-head">
+      <span class="stage-num">References</span>
+    </div>
+    <ul class="ref-list">
+      <li><a href="https://cis565-fall-2022.github.io/projects/" target="_blank" rel="noopener">https://cis565-fall-2022.github.io/projects/</a></li>
+      <li><a href="https://www.pbrt.org/" target="_blank" rel="noopener">https://www.pbrt.org/</a></li>
+    </ul>
   </div>
 
 </main>
