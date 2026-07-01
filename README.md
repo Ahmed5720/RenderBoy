@@ -26,6 +26,7 @@ Although very powerful and beautiful, so far this renderer falls slightly short 
 ---
 
 ## Technical Implementation
+For a fairly detailed description: [RenderBoy](https://ahmed5720.github.io/RenderBoy/) 
 
 The project is implemented in **C++/OpenGL/CUDA**:
 - The bulk of computation runs on the CUDA side
