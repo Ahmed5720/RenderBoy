@@ -11,9 +11,15 @@ Although very powerful and beautiful, so far this renderer falls slightly short 
 
 ## Renders
 
+### Room
+![Room @ 5000 Samples, Depth = 12](img/Room.png)
+*5000 samples, ray depth = 12*
+
+
 ### Fireplace Scene
 ![Fire Place @ 2200 Samples, Depth = 4](img/postpros.png)
 *1200 samples, ray depth = 8*
+
 
 ### Stanford Dragon Scene
 ![Stanford Dragon Scene @ 2200 Samples, Depth = 4](img/toneMapped.png)
